@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  Zap,
   Search,
   Database,
   Layers,
@@ -15,7 +14,14 @@ import {
   AlertCircle,
   RefreshCw,
   Server,
-  ArrowRight,
+  Zap,
+  ArrowUpRight,
+  ChevronRight,
+  Sliders,
+  Terminal,
+  Activity,
+  Cpu,
+  Lock,
 } from "lucide-react";
 
 interface SearchResult {
@@ -33,7 +39,12 @@ interface Diagnostics {
   qstash: { configured: boolean; details: string };
 }
 
+type TabType = "search" | "ratelimit" | "qstash" | "architecture";
+
 export default function HomePage() {
+  const [activeTab, setActiveTab] = useState<TabType>("search");
+
+  // Search state
   const [searchQuery, setSearchQuery] = useState("serverless caching");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchMeta, setSearchMeta] = useState<{
@@ -45,6 +56,9 @@ export default function HomePage() {
   // Rate Limiting state
   const [rateLimitStatus, setRateLimitStatus] = useState<any>(null);
   const [isHittingRateLimit, setIsHittingRateLimit] = useState(false);
+  const [rateLimitHistory, setRateLimitHistory] = useState<
+    { id: string; time: string; status: number; remaining: number }[]
+  >([]);
 
   // Trending state
   const [trending, setTrending] = useState<{ query: string; count: number }[]>([]);
@@ -58,20 +72,25 @@ export default function HomePage() {
 
   // Diagnostics
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
+  const [isRefreshingDiag, setIsRefreshingDiag] = useState(false);
 
-  // Load initial diagnostics & trending
   useEffect(() => {
     fetchDiagnostics();
     fetchTrending();
+    // Run initial search
+    handleSearch("serverless caching");
   }, []);
 
   async function fetchDiagnostics() {
+    setIsRefreshingDiag(true);
     try {
       const res = await fetch("/api/diagnostics");
       const data = await res.json();
       setDiagnostics(data);
     } catch (e) {
       console.error(e);
+    } finally {
+      setIsRefreshingDiag(false);
     }
   }
 
@@ -111,10 +130,20 @@ export default function HomePage() {
     try {
       const res = await fetch("/api/ratelimit-demo", { method: "POST" });
       const data = await res.json();
+      const status = res.status;
       setRateLimitStatus({
-        status: res.status,
+        status,
         ...data,
       });
+      setRateLimitHistory((prev) => [
+        {
+          id: Math.random().toString(36).substring(7),
+          time: new Date().toLocaleTimeString(),
+          status,
+          remaining: data.remaining ?? 0,
+        },
+        ...prev.slice(0, 7),
+      ]);
     } catch (e) {
       console.error(e);
     } finally {
@@ -134,13 +163,15 @@ export default function HomePage() {
           title: newTitle,
           content: newContent,
           category: newCategory,
-          tags: [newCategory, "user-submitted"],
+          tags: [newCategory, "production"],
         }),
       });
       const data = await res.json();
       setIngestStatus(data);
       setNewTitle("");
       setNewContent("");
+      // Refresh search results
+      handleSearch(newTitle);
     } catch (e) {
       console.error(e);
     } finally {
@@ -149,220 +180,229 @@ export default function HomePage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 space-y-12">
-      {/* Hero Header */}
-      <header className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-3">
-            <Zap className="w-3.5 h-3.5" /> Next.js 15 App Router on Vercel
+    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col font-sans">
+      {/* Top Navigation */}
+      <header className="border-b border-zinc-800/60 sticky top-0 z-30 bg-[#09090b]/80 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-emerald-400 font-mono text-xs font-bold shadow-sm">
+              ▲
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium tracking-tight text-zinc-100">
+                upstash<span className="text-zinc-500">/</span>engine
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">
+                v1.0
+              </span>
+            </div>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-            Upstash All-in-One Learning Hub
-          </h1>
-          <p className="text-slate-400 mt-2 text-sm sm:text-base max-w-2xl">
-            Master <span className="text-emerald-400 font-medium">Redis</span>,{" "}
-            <span className="text-amber-400 font-medium">Vector</span>, and{" "}
-            <span className="text-sky-400 font-medium">QStash</span> with live,
-            interactive serverless patterns running together.
-          </p>
-        </div>
 
-        {/* Diagnostics Card */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 min-w-[280px] shadow-lg">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Server className="w-3.5 h-3.5 text-emerald-400" /> Services Status
-            </span>
+          {/* Live Telemetry Pills */}
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="hidden sm:flex items-center gap-3 text-xs font-mono text-zinc-400">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    diagnostics?.redis.connected ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"
+                  }`}
+                />
+                <span>Redis</span>
+                {diagnostics?.redis.connected && (
+                  <span className="text-zinc-500 text-[11px]">{diagnostics.redis.latencyMs}ms</span>
+                )}
+              </div>
+
+              <span className="text-zinc-700">/</span>
+
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    diagnostics?.vector.connected ? "bg-emerald-500 animate-pulse" : "bg-zinc-600"
+                  }`}
+                />
+                <span>Vector</span>
+                <span className="text-zinc-500 text-[11px]">384d</span>
+              </div>
+
+              <span className="text-zinc-700">/</span>
+
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    diagnostics?.qstash.configured ? "bg-emerald-500" : "bg-zinc-600"
+                  }`}
+                />
+                <span>QStash</span>
+              </div>
+            </div>
+
             <button
               onClick={fetchDiagnostics}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors p-1"
-              title="Refresh status"
+              disabled={isRefreshingDiag}
+              className="p-1.5 text-zinc-400 hover:text-zinc-200 rounded-md hover:bg-zinc-900 transition-colors border border-transparent hover:border-zinc-800"
+              title="Refresh telemetry"
             >
-              <RefreshCw className="w-3 h-3" />
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingDiag ? "animate-spin" : ""}`} />
             </button>
-          </div>
-
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300 font-medium flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Redis
-              </span>
-              <span
-                className={`font-mono px-1.5 py-0.5 rounded text-[11px] ${
-                  diagnostics?.redis.connected
-                    ? "bg-emerald-950 text-emerald-400 border border-emerald-800/50"
-                    : diagnostics?.redis.configured
-                    ? "bg-amber-950 text-amber-400 border border-amber-800/50"
-                    : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {diagnostics?.redis.connected
-                  ? `${diagnostics.redis.latencyMs}ms`
-                  : diagnostics?.redis.configured
-                  ? "Configured"
-                  : "Local Mode"}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300 font-medium flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Vector
-              </span>
-              <span
-                className={`font-mono px-1.5 py-0.5 rounded text-[11px] ${
-                  diagnostics?.vector.connected
-                    ? "bg-emerald-950 text-emerald-400 border border-emerald-800/50"
-                    : diagnostics?.vector.configured
-                    ? "bg-amber-950 text-amber-400 border border-amber-800/50"
-                    : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {diagnostics?.vector.connected
-                  ? "Connected"
-                  : diagnostics?.vector.configured
-                  ? "Configured"
-                  : "Local Mode"}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300 font-medium flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-sky-500 inline-block" /> QStash
-              </span>
-              <span
-                className={`font-mono px-1.5 py-0.5 rounded text-[11px] ${
-                  diagnostics?.qstash.configured
-                    ? "bg-emerald-950 text-emerald-400 border border-emerald-800/50"
-                    : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                {diagnostics?.qstash.configured ? "Ready" : "Local Mode"}
-              </span>
-            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Interactive Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left 2 Cols: Vector & Redis Search + Cache-Aside */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                  <Database className="w-5 h-5" />
+      {/* Main Container */}
+      <main className="flex-1 max-w-6xl mx-auto w-full px-4 sm:px-6 py-8 space-y-8">
+        {/* Page Hero */}
+        <div className="space-y-2">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-zinc-100">
+            Serverless Architecture Console
+          </h1>
+          <p className="text-sm text-zinc-400 max-w-2xl leading-relaxed">
+            Production patterns for high-throughput Next.js apps deployed on Vercel:
+            sub-millisecond in-memory caching, geometric vector retrieval, and decoupled task queuing.
+          </p>
+        </div>
+
+        {/* Minimal Segmented Tab Switcher */}
+        <div className="flex items-center border-b border-zinc-800/80 gap-1 overflow-x-auto no-scrollbar">
+          {[
+            { id: "search", label: "Semantic Search", icon: Search },
+            { id: "ratelimit", label: "Rate Limiting & Security", icon: ShieldCheck },
+            { id: "qstash", label: "Async Task Queue", icon: Layers },
+            { id: "architecture", label: "System Topology", icon: Cpu },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as TabType)}
+                className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-all ${
+                  isActive
+                    ? "border-emerald-500 text-zinc-100"
+                    : "border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isActive ? "text-emerald-400" : "text-zinc-500"}`} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab 1: Semantic Search & Cache-Aside */}
+        {activeTab === "search" && (
+          <div className="space-y-6">
+            {/* Search Input Command Bar */}
+            <div className="space-y-3">
+              <div className="relative group">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  placeholder="Query knowledge base (e.g. 'How to cache with TTL?')"
+                  className="w-full bg-zinc-900/60 border border-zinc-800/80 rounded-xl px-4 py-3 pl-10 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 focus:ring-1 focus:ring-zinc-700 transition-all font-sans"
+                />
+                <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3.5" />
+                <div className="absolute right-3 top-2.5 flex items-center gap-2">
+                  <span className="hidden sm:inline-block text-[10px] font-mono text-zinc-500 bg-zinc-800/60 px-1.5 py-0.5 rounded border border-zinc-700/40">
+                    ↵ Enter
+                  </span>
+                  <button
+                    onClick={() => handleSearch()}
+                    disabled={isSearching}
+                    className="px-3 py-1 bg-zinc-100 hover:bg-white text-zinc-950 font-medium rounded-lg text-xs transition-colors flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {isSearching ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Search"}
+                  </button>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    Semantic Search & Cache-Aside
-                  </h2>
-                  <p className="text-xs text-slate-400">
-                    Upstash Vector (Semantic) + Upstash Redis (Sub-5ms Cache)
-                  </p>
-                </div>
+              </div>
+
+              {/* Suggestions */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-zinc-500 text-[11px]">Quick samples:</span>
+                {[
+                  "serverless caching",
+                  "rate limiting security",
+                  "vector embeddings",
+                  "background jobs",
+                ].map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => {
+                      setSearchQuery(q);
+                      handleSearch(q);
+                    }}
+                    className="text-[11px] px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors font-mono"
+                  >
+                    {q}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Search Input Box */}
-            <div className="relative mb-4">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                placeholder="Ask or search anything (e.g. 'How to cache data with TTL?')"
-                className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-3.5 pl-11 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
-              />
-              <Search className="w-4 h-4 text-slate-400 absolute left-4 top-4" />
-              <button
-                onClick={() => handleSearch()}
-                disabled={isSearching}
-                className="absolute right-2.5 top-2.5 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
-              >
-                {isSearching ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : "Search"}
-              </button>
-            </div>
-
-            {/* Quick Sample Queries */}
-            <div className="flex flex-wrap items-center gap-2 mb-6">
-              <span className="text-xs text-slate-500">Try sample:</span>
-              {[
-                "serverless caching",
-                "rate limiting security",
-                "vector embeddings",
-                "background jobs",
-              ].map((q) => (
-                <button
-                  key={q}
-                  onClick={() => {
-                    setSearchQuery(q);
-                    handleSearch(q);
-                  }}
-                  className="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700/50"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-
-            {/* Latency & Cache Inspection Banner */}
+            {/* Telemetry Metric Bar */}
             {searchMeta && (
               <div
-                className={`p-3.5 rounded-xl border mb-6 flex items-center justify-between text-xs animate-in fade-in duration-200 ${
+                className={`p-3 rounded-lg border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all ${
                   searchMeta.source === "redis_cache"
-                    ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
-                    : "bg-amber-950/40 border-amber-500/40 text-amber-300"
+                    ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-300"
+                    : "bg-zinc-900/40 border-zinc-800 text-zinc-300"
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 shrink-0" />
+                <div className="flex items-center gap-2 font-mono text-[11px]">
+                  <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>
-                    Latency: <strong>{searchMeta.latencyMs} ms</strong>
+                    LATENCY: <strong>{searchMeta.latencyMs}ms</strong>
                   </span>
-                  <span className="text-slate-500">|</span>
+                  <span className="text-zinc-600">·</span>
                   <span>
-                    Source:{" "}
-                    <span className="font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/40">
-                      {searchMeta.source}
+                    SOURCE:{" "}
+                    <span className="font-semibold uppercase text-zinc-200">
+                      {searchMeta.source === "redis_cache" ? "Upstash Redis (Cache-Aside)" : "Upstash Vector (Cosine DB)"}
                     </span>
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-400">
+
+                <div className="text-[11px] text-zinc-400 font-sans">
                   {searchMeta.source === "redis_cache"
-                    ? "⚡ Served instantly from Redis Cache!"
-                    : "🔍 Computed by Vector index & now cached in Redis"}
+                    ? "⚡ Served from Redis in-memory cache without querying vector storage"
+                    : "🔍 Computed via 384-dimensional cosine similarity & cached for 5 min"}
                 </div>
               </div>
             )}
 
-            {/* Results Display */}
-            <div className="space-y-3">
+            {/* Results Grid */}
+            <div className="space-y-2.5">
               {searchResults.length === 0 ? (
-                <div className="text-center py-10 text-slate-500 text-xs">
-                  Run a search above to see semantic retrieval and sub-millisecond Redis caching in action.
+                <div className="py-16 text-center text-xs text-zinc-500 border border-dashed border-zinc-800 rounded-xl">
+                  No matches returned. Type a query above to query the vector index.
                 </div>
               ) : (
                 searchResults.map((item) => (
                   <div
                     key={item.id}
-                    className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-all space-y-1.5"
+                    className="p-4 rounded-xl bg-zinc-900/30 border border-zinc-800/80 hover:border-zinc-700/80 transition-all space-y-2 group"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-white">{item.title}</h3>
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">
-                        Score: {(item.score * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-300 leading-relaxed">{item.content}</p>
-                    <div className="flex items-center gap-1.5 pt-1">
-                      {item.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono"
-                        >
-                          #{tag}
+                    <div className="flex items-start justify-between gap-4">
+                      <h3 className="text-sm font-medium text-zinc-100 group-hover:text-white transition-colors">
+                        {item.title}
+                      </h3>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800/40 px-2 py-0.5 rounded">
+                          {(item.score * 100).toFixed(1)}% match
                         </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-zinc-400 leading-relaxed font-sans">{item.content}</p>
+
+                    <div className="flex items-center gap-2 pt-1 text-[10px] font-mono text-zinc-500">
+                      <span className="uppercase text-zinc-400 bg-zinc-800/50 px-1.5 py-0.5 rounded">
+                        {item.category}
+                      </span>
+                      {item.tags.map((tag) => (
+                        <span key={tag}>#{tag}</span>
                       ))}
                     </div>
                   </div>
@@ -370,197 +410,308 @@ export default function HomePage() {
               )}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Right Col: Rate Limiting & Trending Searches */}
-        <div className="space-y-6">
-          {/* Rate Limiting Test Card */}
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400">
-                <ShieldCheck className="w-5 h-5" />
+        {/* Tab 2: Rate Limiting & Trending */}
+        {activeTab === "ratelimit" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Rate Limiter Tester */}
+            <div className="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <h2 className="text-sm font-semibold text-zinc-100">Sliding Window Protection</h2>
+                  <p className="text-xs text-zinc-400">Enforces 5 requests per 10 seconds via Redis</p>
+                </div>
+                <span className="p-2 rounded-lg bg-zinc-800/50 text-zinc-400 border border-zinc-700/50">
+                  <ShieldCheck className="w-4 h-4" />
+                </span>
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-white">Rate Limiter</h2>
-                <p className="text-xs text-slate-400">
-                  @upstash/ratelimit (5 req / 10s sliding window)
+
+              <div className="p-4 rounded-lg bg-zinc-950 border border-zinc-800/60 space-y-3">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="text-zinc-400">QUOTA REMAINING</span>
+                  <span className="text-zinc-200 font-bold">
+                    {rateLimitStatus ? `${rateLimitStatus.remaining} / ${rateLimitStatus.limit}` : "5 / 5"}
+                  </span>
+                </div>
+
+                {/* Quota Segments */}
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[1, 2, 3, 4, 5].map((idx) => {
+                    const remaining = rateLimitStatus?.remaining ?? 5;
+                    const isFilled = idx <= remaining;
+                    return (
+                      <div
+                        key={idx}
+                        className={`h-2 rounded transition-all ${
+                          isFilled
+                            ? "bg-emerald-500"
+                            : "bg-red-500/80 border border-red-500/30"
+                        }`}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                onClick={testRateLimit}
+                disabled={isHittingRateLimit}
+                className="w-full py-2 px-4 rounded-lg bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                {isHittingRateLimit ? "Evaluating with Redis..." : "Dispatch Request to Protected Route"}
+              </button>
+
+              {/* Request Telemetry Log */}
+              <div className="space-y-1.5 pt-2">
+                <span className="text-[10px] font-mono text-zinc-500 uppercase">Recent Edge Evaluations:</span>
+                <div className="space-y-1">
+                  {rateLimitHistory.length === 0 ? (
+                    <div className="text-[11px] text-zinc-600 font-mono py-2">Click above to send requests</div>
+                  ) : (
+                    rateLimitHistory.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between text-[11px] font-mono px-2 py-1 rounded bg-zinc-950/70 border border-zinc-850"
+                      >
+                        <span className="text-zinc-400">{item.time}</span>
+                        <span className="text-zinc-500">POST /api/ratelimit-demo</span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] ${
+                            item.status === 200
+                              ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/40"
+                              : "bg-red-950/60 text-red-400 border border-red-800/40"
+                          }`}
+                        >
+                          {item.status === 200 ? "200 ALLOWED" : "429 BLOCKED"}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Trending Queries Leaderboard */}
+            <div className="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <h2 className="text-sm font-semibold text-zinc-100">Live Search Leaderboard</h2>
+                  <p className="text-xs text-zinc-400">Atomic frequency counters in Redis Sorted Sets (ZSET)</p>
+                </div>
+                <span className="p-2 rounded-lg bg-zinc-800/50 text-zinc-400 border border-zinc-700/50">
+                  <TrendingUp className="w-4 h-4" />
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                {trending.length === 0 ? (
+                  <div className="text-xs text-zinc-500 py-8 text-center">No search history recorded yet</div>
+                ) : (
+                  trending.map((item, idx) => (
+                    <div
+                      key={item.query}
+                      className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-950/50 border border-zinc-850 text-xs font-mono"
+                    >
+                      <div className="flex items-center gap-2 text-zinc-300">
+                        <span className="text-zinc-600 w-4">#{idx + 1}</span>
+                        <span>{item.query}</span>
+                      </div>
+                      <span className="text-emerald-400 font-semibold bg-emerald-950/50 px-2 py-0.5 rounded text-[11px] border border-emerald-900/30">
+                        {item.count} hits
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="p-3 rounded-lg bg-zinc-950/40 border border-zinc-850 text-[11px] text-zinc-400 space-y-1">
+                <span className="font-mono text-zinc-300 font-medium">Why Sorted Sets?</span>
+                <p className="leading-relaxed">
+                  Avoids running expensive SQL aggregations. Redis commands like <code className="text-zinc-300">ZINCRBY</code> and{" "}
+                  <code className="text-zinc-300">ZREVRANGE</code> execute in <code className="text-zinc-300">O(log N)</code> time.
                 </p>
               </div>
             </div>
-
-            <p className="text-xs text-slate-300">
-              Spam the button to test rate limiting. When the quota of 5 requests per 10s is exceeded, Upstash Redis returns an HTTP 429 Too Many Requests instantly.
-            </p>
-
-            <button
-              onClick={testRateLimit}
-              disabled={isHittingRateLimit}
-              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-50"
-            >
-              {isHittingRateLimit ? "Sending..." : "Hit Protected API Route"}
-            </button>
-
-            {rateLimitStatus && (
-              <div
-                className={`p-3 rounded-xl border text-xs space-y-1 animate-in fade-in duration-150 ${
-                  rateLimitStatus.status === 429
-                    ? "bg-red-950/60 border-red-500 text-red-200"
-                    : "bg-emerald-950/60 border-emerald-500 text-emerald-200"
-                }`}
-              >
-                <div className="font-bold flex items-center gap-1.5">
-                  {rateLimitStatus.status === 429 ? (
-                    <>
-                      <AlertCircle className="w-4 h-4 text-red-400" />
-                      HTTP 429 Rate Limit Exceeded!
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      Request Allowed!
-                    </>
-                  )}
-                </div>
-                <div className="text-[11px] opacity-80">
-                  Remaining: {rateLimitStatus.remaining} / {rateLimitStatus.limit}
-                </div>
-              </div>
-            )}
           </div>
+        )}
 
-          {/* Redis Trending Queries Leaderboard */}
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400">
-                  <TrendingUp className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">Trending Queries</h2>
-                  <p className="text-xs text-slate-400">Redis Sorted Sets (ZINCRBY)</p>
-                </div>
+        {/* Tab 3: QStash Task Queue */}
+        {activeTab === "qstash" && (
+          <div className="p-6 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-6">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <h2 className="text-base font-semibold text-zinc-100">Asynchronous Document Ingestion</h2>
+                <p className="text-xs text-zinc-400 max-w-xl">
+                  Dispatches document ingestion to the Upstash QStash queue. The client receives an immediate response
+                  in &lt; 20ms while the webhook endpoint consumes the message with HMAC cryptographic verification.
+                </p>
               </div>
+              <span className="p-2 rounded-lg bg-zinc-800/50 text-zinc-400 border border-zinc-700/50 shrink-0">
+                <Layers className="w-4 h-4" />
+              </span>
             </div>
 
-            <div className="space-y-2">
-              {trending.map((item, idx) => (
-                <div
-                  key={item.query}
-                  className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/60 text-xs"
+            <form onSubmit={handleIngest} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2 space-y-1">
+                <label className="text-xs font-mono text-zinc-400">DOCUMENT TITLE</label>
+                <input
+                  type="text"
+                  required
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  placeholder="e.g. Distributed Locks with Redis and Lua"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-700"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-mono text-zinc-400">CATEGORY</label>
+                <select
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-700"
                 >
-                  <span className="flex items-center gap-2 text-slate-200">
-                    <span className="text-slate-500 font-mono w-4">#{idx + 1}</span>
-                    {item.query}
-                  </span>
-                  <span className="font-mono text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded text-[11px]">
-                    {item.count} hits
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom Section: QStash Background Ingestion */}
-      <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 shadow-xl backdrop-blur space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400">
-            <Layers className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-white">
-              Async Document Ingestion with Upstash QStash
-            </h2>
-            <p className="text-xs text-slate-400">
-              Serverless HTTP Message Queue + HMAC Webhook Signature Verification
-            </p>
-          </div>
-        </div>
-
-        <form onSubmit={handleIngest} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">
-              Document Title
-            </label>
-            <input
-              type="text"
-              required
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="e.g. Scaling Next.js with Upstash Workflow"
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Category</label>
-            <select
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-sky-500"
-            >
-              <option value="redis">Redis</option>
-              <option value="vector">Vector</option>
-              <option value="qstash">QStash</option>
-              <option value="architecture">Architecture</option>
-            </select>
-          </div>
-
-          <div className="flex items-end">
-            <button
-              type="submit"
-              disabled={isIngesting}
-              className="w-full py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
-            >
-              {isIngesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              Dispatch to QStash
-            </button>
-          </div>
-
-          <div className="md:col-span-4">
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Content</label>
-            <textarea
-              required
-              rows={3}
-              value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
-              placeholder="Write document text to be vector-embedded in the background..."
-              className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-500"
-            />
-          </div>
-        </form>
-
-        {ingestStatus && (
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1 font-mono">
-            <div className="text-emerald-400 font-bold">
-              ✓ {ingestStatus.message}
-            </div>
-            {ingestStatus.messageId && (
-              <div className="text-slate-400 text-[11px]">
-                QStash Message ID: <span className="text-sky-300">{ingestStatus.messageId}</span>
+                  <option value="redis">Redis</option>
+                  <option value="vector">Vector</option>
+                  <option value="qstash">QStash</option>
+                  <option value="architecture">Architecture</option>
+                </select>
               </div>
-            )}
-            {ingestStatus.destinationUrl && (
-              <div className="text-slate-400 text-[11px]">
-                Target Webhook: <span className="text-slate-300">{ingestStatus.destinationUrl}</span>
+
+              <div className="md:col-span-3 space-y-1">
+                <label className="text-xs font-mono text-zinc-400">CONTENT</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={newContent}
+                  onChange={(e) => setNewContent(e.target.value)}
+                  placeholder="Paste technical documentation or notes to be vectorized..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-zinc-700 font-sans"
+                />
+              </div>
+
+              <div className="md:col-span-3 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isIngesting}
+                  className="px-4 py-2 bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isIngesting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Dispatch Task to QStash
+                </button>
+              </div>
+            </form>
+
+            {/* Task Receipt */}
+            {ingestStatus && (
+              <div className="p-4 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono space-y-1.5 animate-in fade-in">
+                <div className="text-emerald-400 flex items-center gap-1.5 font-bold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {ingestStatus.message}
+                </div>
+                {ingestStatus.messageId && (
+                  <div className="text-zinc-400 text-[11px] break-all">
+                    MESSAGE_ID: <span className="text-zinc-200">{ingestStatus.messageId}</span>
+                  </div>
+                )}
+                {ingestStatus.destinationUrl && (
+                  <div className="text-zinc-500 text-[11px]">
+                    DESTINATION: <span className="text-zinc-400">{ingestStatus.destinationUrl}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
-      </div>
 
-      {/* Footer / Guide Link */}
-      <footer className="border-t border-slate-800/80 pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
-        <div>
-          Full architectural tutorial in{" "}
-          <span className="font-mono text-slate-300">TUTORIAL.md</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span>Deployable to Vercel with zero code changes</span>
+        {/* Tab 4: Architecture & Topology */}
+        {activeTab === "architecture" && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl bg-zinc-900/30 border border-zinc-800/80 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  REDIS LAYER
+                </div>
+                <h3 className="text-sm font-semibold text-zinc-100">Speed & Protection</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Stateless HTTP client prevents TCP connection exhaustion on Vercel. Implements sliding window rate
+                  limiting and sub-5ms Cache-Aside.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-zinc-900/30 border border-zinc-800/80 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  VECTOR LAYER
+                </div>
+                <h3 className="text-sm font-semibold text-zinc-100">Semantic Intelligence</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Serverless high-dimensional embeddings using BGE_SMALL_EN_V1_5. Executes cosine similarity queries
+                  over raw text with zero external LLM API costs.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-zinc-900/30 border border-zinc-800/80 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  QSTASH LAYER
+                </div>
+                <h3 className="text-sm font-semibold text-zinc-100">Decoupled Processing</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Eliminates serverless function timeouts. Queues background tasks with automatic retries and HMAC
+                  cryptographic signature verification.
+                </p>
+              </div>
+            </div>
+
+            {/* Diagnostic Configuration Overview */}
+            <div className="p-5 rounded-xl bg-zinc-900/40 border border-zinc-800/80 space-y-3 font-mono text-xs">
+              <span className="text-zinc-400 uppercase text-[11px]">Active Service Endpoints</span>
+              <div className="space-y-1.5 text-[11px]">
+                <div className="flex justify-between p-2 rounded bg-zinc-950 border border-zinc-850">
+                  <span className="text-zinc-500">UPSTASH_REDIS_REST_URL</span>
+                  <span className="text-zinc-300">actual-koi-285803.upstash.io</span>
+                </div>
+                <div className="flex justify-between p-2 rounded bg-zinc-950 border border-zinc-850">
+                  <span className="text-zinc-500">UPSTASH_VECTOR_REST_URL</span>
+                  <span className="text-zinc-300">humorous-lacewing-91070-us1-vector.upstash.io</span>
+                </div>
+                <div className="flex justify-between p-2 rounded bg-zinc-950 border border-zinc-850">
+                  <span className="text-zinc-500">QSTASH_INSTANCE</span>
+                  <span className="text-zinc-300">6b483742-6d36-4b4f-91e8-4a294543debf (eu-central-1)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-zinc-800/60 py-6 text-xs text-zinc-500">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 font-mono text-[11px]">
+          <span>UPSTASH_ENGINE // NEXT.JS 15 (APP ROUTER)</span>
+          <div className="flex items-center gap-4 text-zinc-400">
+            <a
+              href="https://github.com/j1znuneel/upstash-test"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-zinc-100 transition-colors flex items-center gap-1"
+            >
+              GitHub <ArrowUpRight className="w-3 h-3" />
+            </a>
+            <a
+              href="https://console.upstash.com"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-zinc-100 transition-colors flex items-center gap-1"
+            >
+              Console <ArrowUpRight className="w-3 h-3" />
+            </a>
+          </div>
         </div>
       </footer>
     </div>
   );
 }
-

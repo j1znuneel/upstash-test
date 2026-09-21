@@ -6,15 +6,35 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
-        upstash: {
-          green: "#00E9A3",
-          dark: "#121212",
-          card: "#1E1E1E",
-          border: "#2A2A2A",
+        brand: {
+          50: "#ecfdf5",
+          100: "#d1fae5",
+          400: "#34d399",
+          500: "#10b981",
+          600: "#059669",
         },
+      },
+      fontFamily: {
+        sans: [
+          "Inter",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "sans-serif",
+        ],
+        mono: [
+          "JetBrains Mono",
+          "Fira Code",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "monospace",
+        ],
       },
     },
   },

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Upstash All-in-One Showcase | Next.js on Vercel",
+  title: "Upstash Engine | Serverless Knowledge & Task Architecture",
   description:
-    "Learn Redis, Vector, and QStash with an interactive Next.js App Router full-stack application.",
+    "Production-grade Next.js App Router architecture combining Upstash Redis, Upstash Vector, and Upstash QStash.",
 };
 
 export default function RootLayout({
@@ -13,11 +13,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="antialiased bg-[#0B0F17] text-slate-100 min-h-screen">
+    <html lang="en" className="dark bg-[#09090b]">
+      <body className="antialiased min-h-screen bg-[#09090b] text-zinc-100 selection:bg-emerald-500/20 selection:text-emerald-300">
         {children}
       </body>
     </html>
   );
 }
-

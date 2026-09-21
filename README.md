@@ -54,3 +54,4 @@ Open [http://localhost:3000](http://localhost:3000) to view the interactive dash
 
 ## 📖 Deep-Dive Architecture Guide
 Read [TUTORIAL.md](./TUTORIAL.md) for step-by-step explanations of the serverless architecture, caching strategies, and Vercel deployment options.
+
